@@ -10,7 +10,7 @@ syms xb zb phib        real % floating base coordinates
 syms dxb dzb dphib     real % floating base velocities
 syms x0  z0  theta0    real % planar contact constraint. measured w.r.t. {W}orld Frame
 syms tau1 tau2 tau3    real % actuated joints 
-ddq    = sym('ddq', [nq, 1], 'real'); 
+ddq = sym('ddq', [nq, 1], 'real'); 
 lambda = sym('lambda', [3,1], 'real'); 
 
 % System parameters 
@@ -143,7 +143,7 @@ end
 % For the single legged model  
 phi   = [pcF_W(1) - x0; 
          pcF_W(3) - z0; 
-         (phib + q1 + q2 + q3) - theta0]; 
+         (phib + q1 + q2 + q3 + qF) - theta0]; 
 Jc    =  jacobian(phi, qfull); 
 
 % Constraint in velocity:     Jc *dqfull == 0
@@ -183,17 +183,18 @@ end
 % Export Functions 
 params = [l1; l2; l3; c1; c2; c3; cF; qF; m1; m2; m3; I1; I2; I3; g];
 
-matlabFunction(M,    'File','M_leg_fb',    'Vars',{qfull, params},              'Outputs',{'Mq'});
-matlabFunction(C,    'File','C_leg_fb',    'Vars',{qfull, dqfull, params},     'Outputs',{'Cq'});
-matlabFunction(gq,   'File','g_leg_fb',    'Vars',{qfull, params},              'Outputs',{'gq'});
-matlabFunction(Jc,   'File','Jc_leg_fb',   'Vars',{qfull, params},              'Outputs',{'Jc_q'});
-matlabFunction(Jc_dot_dq, ...
-               'File','JcDotdq_leg_fb',   'Vars',{qfull, dqfull, params},      'Outputs',{'Jcdq'});
-matlabFunction(h_vec,'File','h_centroidal_planar', ...
-               'Vars',{qfull, dqfull, params}, 'Outputs',{'hvec'});
-matlabFunction(A,    'File','A_centroidal_planar', ...
-               'Vars',{qfull, params},          'Outputs',{'Aq'});
-
+% Dynamics matrix terms
+matlabFunction(M, 'File','M_leg_fb', 'Vars', {qfull, params}, 'Outputs', {'Mq'});
+matlabFunction(C, 'File','C_leg_fb', 'Vars', {qfull, dqfull, params}, 'Outputs', {'Cq'});
+matlabFunction(gq, 'File','g_leg_fb', 'Vars', {qfull, params}, 'Outputs', {'gq'});
+% Contact jacobians
+matlabFunction(Jc, 'File','Jc_leg_fb', 'Vars', {qfull, params}, 'Outputs', {'Jc_q'});
+matlabFunction(Jc_dot_dq, 'File','JcDotdq_leg_fb', 'Vars', {qfull, dqfull, params}, 'Outputs', {'Jcdq'});
+% spatial momentum vec and CMM
+matlabFunction(h_vec,'File','h_centroidal_planar', 'Vars', {qfull, dqfull, params}, 'Outputs', {'hvec'});
+matlabFunction(A, 'File','A_centroidal_planar', 'Vars', {qfull, params}, 'Outputs', {'Aq'});
+% CoM position 
+matlabFunction(pcW, 'File', 'pcom_planar', 'Vars', {qfull, params}, 'Outputs', {'pcom'});
 
 % Helper functions
 % Compute CoB transformations between links 
