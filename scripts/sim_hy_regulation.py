@@ -17,6 +17,12 @@ def main():
     model = pin.buildModelFromUrdf(str(urdf), pin.JointModelFreeFlyer())
     data  = model.createData()
 
+    # meshcat requires explicit geometry models/data so placements can be updated
+    visual_model = pin.buildGeomFromUrdf(model, str(urdf), pin.GeometryType.VISUAL)
+    visual_data = pin.GeometryData(visual_model)
+    collision_model = pin.buildGeomFromUrdf(model, str(urdf), pin.GeometryType.COLLISION)
+    collision_data = pin.GeometryData(collision_model)
+
     # check model info, namely joint orders
     print("nq:", model.nq, "nv:", model.nv)
     for jid, name in enumerate(model.names):
@@ -37,8 +43,15 @@ def main():
     q = pin.neutral(model)
     v = np.zeros(model.nv)
 
-        # build visualization 
-    viz = MeshcatVisualizer(model, data, meshcat=pin.Meshcat(), collision_model=None, visual_model=None)
+    # build visualization 
+    viz = MeshcatVisualizer(
+        model,
+        collision_model,
+        visual_model,
+        data=data,
+        collision_data=collision_data,
+        visual_data=visual_data,
+    )
     viz.initViewer(open=True)
     viz.loadViewerModel()
     viz.display(q)
