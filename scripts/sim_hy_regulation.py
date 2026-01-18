@@ -4,6 +4,7 @@ from pinocchio.visualize import MeshcatVisualizer
 import matplotlib.pyplot as plt
 from pathlib import Path
 from scipy.io import savemat
+import time 
 
 def clamp(x, lo, hi):
     return np.minimum(np.maximum(x, lo), hi)
@@ -59,7 +60,7 @@ def main():
     # velocity kick
     t_kick = 0.5
     dv_kick = np.zeros(model.nv) 
-    dv_kick[1] = 0.01 # kick pitch about wy
+    dv_kick[1] = 0.1 # kick pitch about wy
     kick_i = int(t_kick / dt)
 
     # Logs
@@ -73,6 +74,10 @@ def main():
         # kick tick 
         if k == kick_i:
             v = v + dv_kick
+
+        if k % 20 == 0:     # 20 * dt = 0.04s which is about 25FPS
+            viz.display(q)
+            time.sleep(dt*20)
 
         # CoM and centroidal map/momentum
         pin.centerOfMass(model, data, q, v)
@@ -105,7 +110,7 @@ def main():
 
         # minimum-norm ddq for a single linear constraint:
         # ddq = a^T * rhs / (a a^T + reg)
-        denom = float(a @ a.T) + reg
+        denom = float((a @ a.T).item()) + reg
         ddq_cmd = (a.T.flatten() * (rhs / denom))
 
         ddq_cmd = ddq_cmd - k_dq * v
@@ -123,7 +128,7 @@ def main():
         # Integrate
         # limit unreasonable velocities
         v = v + ddq * dt
-        v = clamp(v + ddq * dt, -100.0, 100.0)
+        v = clamp(v, -100.0, 100.0)
         q = pin.integrate(model, q, v * dt)
 
         # Log
