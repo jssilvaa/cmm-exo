@@ -67,7 +67,7 @@ contact feasibility (unilateral forces, friction limits, center of pressure).
 These assumptions are **intentional** and will be relaxed incrementally.
 
 Some other notes: 
-- The model also works for humanoids (bipeds) and quadripeds. Just make sure to change the mass-inertia matrix, and the contact forces. Change the constraints in the dynamical model as required. Use Craig's or Flyweight's textbooks for references.
+- The model also works for humanoids (bipeds) and quadripeds. Just make sure to change the mass-inertia matrix, and the contact forces. Change the constraints in the dynamical model as required. Look into Craig's or Featherstone's textbooks for further references.
 ---
 
 ## Roadmap
