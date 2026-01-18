@@ -4,18 +4,15 @@ from pinocchio.visualize import MeshcatVisualizer
 import matplotlib.pyplot as plt
 from pathlib import Path
 from scipy.io import savemat
-import time 
-
-def clamp(x, lo, hi):
-    return np.minimum(np.maximum(x, lo), hi)
+import time
 
 def main():
     root = Path(__file__).resolve().parents[1]
     urdf = root / "urdf" / "single_leg_3r_floating.urdf"
     assert urdf.exists(), f"URDF not found: {urdf}"
 
-    # build data from model 
-    model = pin.buildModelFromUrdf(str(urdf), pin.JointModelFreeFlyer())
+    # build data from model (fixed base to keep visualization stable)
+    model = pin.buildModelFromUrdf(str(urdf))
     data  = model.createData()
 
     # meshcat requires explicit geometry models/data so placements can be updated
@@ -31,18 +28,24 @@ def main():
 
     #  sim params
     dt   = 0.002
-    T    = 3.0
+    T    = 10.0
     N    = int(T / dt) + 1
     t    = np.linspace(0.0, T, N)
 
-    #  gains 
-    k_h   = 8.0      # centroidal angular momentum damping
-    k_dq  = 2.0      # joint velocity damping (regularization)
-    reg   = 1e-6     # numerical regularization for least squares
+    # joint trajectory (within limits)
+    joint_names = ["hip_pitch", "knee_pitch", "ankle_pitch"]
+    joint_ids = [model.getJointId(name) for name in joint_names]
+    q_idx = np.array([model.idx_qs[jid] for jid in joint_ids], dtype=int)
+    v_idx = np.array([model.idx_vs[jid] for jid in joint_ids], dtype=int)
+
+    q_center = np.array([0.2, -0.4, -0.1])
+    q_amp = np.array([0.4, 0.3, 0.2])
+    q_phase = np.array([0.0, 1.0, -0.6])
+    freq_hz = 0.8
+    omega = 2.0 * np.pi * freq_hz
 
     #  initial state
-    q = pin.neutral(model)
-    v = np.zeros(model.nv)
+    q0 = pin.neutral(model)
 
     # build visualization 
     viz = MeshcatVisualizer(
@@ -55,25 +58,28 @@ def main():
     )
     viz.initViewer(open=True)
     viz.loadViewerModel()
-    viz.display(q)
-
-    # velocity kick
-    t_kick = 0.5
-    dv_kick = np.zeros(model.nv) 
-    dv_kick[1] = 0.1 # kick pitch about wy
-    kick_i = int(t_kick / dt)
+    viz.display(q0)
 
     # Logs
     com_log = np.zeros((N, 3))
     hg_log  = np.zeros((N, 6))
+    hg_err_log = np.zeros((N, 6))
     tau_log = np.zeros((N, model.nv))
     v_log   = np.zeros((N, model.nv))
     q_log   = np.zeros((N, model.nq))
 
     for k in range(N):
-        # kick tick 
-        if k == kick_i:
-            v = v + dv_kick
+        s = omega * t[k] + q_phase
+        qj = q_center + q_amp * np.sin(s)
+        vj = q_amp * omega * np.cos(s)
+        aj = -q_amp * (omega ** 2) * np.sin(s)
+
+        q = q0.copy()
+        v = np.zeros(model.nv)
+        a = np.zeros(model.nv)
+        q[q_idx] = qj
+        v[v_idx] = vj
+        a[v_idx] = aj
 
         if k % 20 == 0:     # 20 * dt = 0.04s which is about 25FPS
             viz.display(q)
@@ -86,76 +92,40 @@ def main():
         pin.ccrba(model, data, q, v)
         Ag = data.Ag.copy()          # 6 x nv
         hg = data.hg.vector.copy()   # 6
-        M  = data.M.copy()           # nv x nv
+        hg_err = hg - Ag @ v
 
-        # extract pitch in world frame 
-        hy = hg[1]
-
-        # desired hy-dot i.e. pitch angvel
-        hdoty_des = -k_h * hy
-
-        # Approximate A_dot row via finite difference
-        # probably not gonna work 
-        q_next = pin.integrate(model, q, v * dt)
-        pin.ccrba(model, data, q_next, v)
-        Ag_next = data.Ag.copy()
-        Adot = (Ag_next - Ag) / dt
-
-        # row corresponding to wy (angular y)
-        a = Ag[1, :].reshape(1, -1)      # 1 x nv
-        adotv = (Adot[1, :] @ v)         # scalar
-
-        # solve: a * ddq = hdoty_des - adotv
-        rhs = hdoty_des - adotv
-
-        # minimum-norm ddq for a single linear constraint:
-        # ddq = a^T * rhs / (a a^T + reg)
-        denom = float((a @ a.T).item()) + reg
-        ddq_cmd = (a.T.flatten() * (rhs / denom))
-
-        ddq_cmd = ddq_cmd - k_dq * v
-
-        # Convert desired acceleration -> torque (inverse dynamics)
-        tau = pin.rnea(model, data, q, v, ddq_cmd)
-        # aphysical torque limits 
-        tau = clamp(tau, -50.0, 50.0)
-
-        # Forward dynamics (consistent acceleration)
-        ddq = pin.aba(model, data, q, v, tau)
-        # limit unphysical accelerations
-        ddq = clamp(ddq, -50.0, 50.0)
-
-        # Integrate
-        # limit unreasonable velocities
-        v = v + ddq * dt
-        v = clamp(v, -100.0, 100.0)
-        q = pin.integrate(model, q, v * dt)
+        # torque needed to follow the joint trajectory
+        tau = pin.rnea(model, data, q, v, a)
 
         # Log
         com_log[k, :] = com
         hg_log[k, :]  = hg
+        hg_err_log[k, :] = hg_err
         tau_log[k, :] = tau
         v_log[k, :]   = v
         q_log[k, :]   = q
 
     # Plot: hy and joint states
     hy_log = hg_log[:, 1]
-    qj_log = q_log[:, 7:10] # joint angles
-    vj_log = v_log[:, 6:9]  # joint velocities (last 3) 
+    qj_log = q_log[:, q_idx]
+    vj_log = v_log[:, v_idx]
+    hg_err_norm = np.linalg.norm(hg_err_log, axis=1)
+
+    print(f"max ||hg - Ag*v||: {hg_err_norm.max():.3e}")
 
     plt.figure()
     plt.plot(t, hy_log, linewidth=2)
     plt.grid(True)
     plt.xlabel("t [s]")
     plt.ylabel("h_y [N·m·s] (centroidal, world wy)")
-    plt.title("Centroidal angular momentum regulation (h_y → 0)")
+    plt.title("Centroidal angular momentum (h_y) from joint motion")
 
     plt.figure()
     plt.plot(t, qj_log)
     plt.grid(True)
     plt.xlabel("t [s]")
     plt.ylabel("q_j [rad]")
-    plt.title("Joint angles (ankle, knee, hip)")
+    plt.title("Joint angles (hip, knee, ankle)")
     plt.legend(["hip", "knee", "ankle"])
 
     plt.figure()
@@ -165,6 +135,13 @@ def main():
     plt.ylabel("dq_j [rad/s]")
     plt.title("Joint velocities (hip, knee, ankle)")
     plt.legend(["hip", "knee", "ankle"])
+
+    plt.figure()
+    plt.plot(t, hg_err_norm, linewidth=2)
+    plt.grid(True)
+    plt.xlabel("t [s]")
+    plt.ylabel("||hg - Ag*v||")
+    plt.title("Centroidal momentum consistency check")
 
     plt.show()
 
@@ -178,6 +155,7 @@ def main():
         "tau": tau_log,
         "com": com_log,
         "hg": hg_log,
+        "hg_err": hg_err_log,
     })
     print(f"Saved: {out}")
 
