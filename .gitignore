@@ -4,7 +4,7 @@ __pycache__/
 .venv/
 .env
 
-# Data/results (keep repo light)
+# Data/results
 data/raw/*
 data/processed/*
 results/*
@@ -15,6 +15,7 @@ results/*
 # MATLAB
 *.asv
 *.m~
+plot_quick.m 
 
 # Arduino
 *.elf
@@ -25,3 +26,8 @@ results/*
 .DS_Store
 Thumbs.db
 
+# Backup files
+backups/ 
+
+# Discard
+discard/
