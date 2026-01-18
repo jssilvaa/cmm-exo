@@ -1,5 +1,6 @@
 import numpy as np
 import pinocchio as pin
+from pinocchio.visualize import MeshcatVisualizer
 import matplotlib.pyplot as plt
 from pathlib import Path
 from scipy.io import savemat
@@ -35,6 +36,12 @@ def main():
     #  initial state
     q = pin.neutral(model)
     v = np.zeros(model.nv)
+
+        # build visualization 
+    viz = MeshcatVisualizer(model, data, meshcat=pin.Meshcat(), collision_model=None, visual_model=None)
+    viz.initViewer(open=True)
+    viz.loadViewerModel()
+    viz.display(q)
 
     # velocity kick
     t_kick = 0.5
@@ -92,12 +99,18 @@ def main():
 
         # Convert desired acceleration -> torque (inverse dynamics)
         tau = pin.rnea(model, data, q, v, ddq_cmd)
+        # aphysical torque limits 
+        tau = clamp(tau, -50.0, 50.0)
 
         # Forward dynamics (consistent acceleration)
         ddq = pin.aba(model, data, q, v, tau)
+        # limit unphysical accelerations
+        ddq = clamp(ddq, -50.0, 50.0)
 
         # Integrate
+        # limit unreasonable velocities
         v = v + ddq * dt
+        v = clamp(v + ddq * dt, -100.0, 100.0)
         q = pin.integrate(model, q, v * dt)
 
         # Log
@@ -139,6 +152,7 @@ def main():
 
     # Save for MATLAB if we need it later 
     out = root / "logs" / "sim_hy_regulation.mat"
+    out.parent.mkdir(parents=True, exist_ok=True) # mkdir if needed
     savemat(str(out), {
         "t": t,
         "q": q_log,
