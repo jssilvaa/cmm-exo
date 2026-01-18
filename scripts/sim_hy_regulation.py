@@ -16,6 +16,11 @@ def main():
     model = pin.buildModelFromUrdf(str(urdf), pin.JointModelFreeFlyer())
     data  = model.createData()
 
+    # check model info, namely joint orders
+    print("nq:", model.nq, "nv:", model.nv)
+    for jid, name in enumerate(model.names):
+        print(jid, name)
+
     #  sim params
     dt   = 0.002
     T    = 3.0
@@ -104,8 +109,8 @@ def main():
 
     # Plot: hy and joint states
     hy_log = hg_log[:, 1]
-    #qj_log = q_log[:, 7:10] # joint angles
-    #vj_log = v_log[:, 6:9]  # joint velocities (last 3) 
+    qj_log = q_log[:, 7:10] # joint angles
+    vj_log = v_log[:, 6:9]  # joint velocities (last 3) 
 
     plt.figure()
     plt.plot(t, hy_log, linewidth=2)
@@ -115,20 +120,20 @@ def main():
     plt.title("Centroidal angular momentum regulation (h_y → 0)")
 
     plt.figure()
-    plt.plot(t, q_log)
+    plt.plot(t, qj_log)
     plt.grid(True)
     plt.xlabel("t [s]")
-    plt.ylabel("q [rad]")
+    plt.ylabel("q_j [rad]")
     plt.title("Joint angles (ankle, knee, hip)")
-    plt.legend(["ankle", "knee", "hip"])
+    plt.legend(["hip", "knee", "ankle"])
 
     plt.figure()
-    plt.plot(t, v_log)
+    plt.plot(t, vj_log)
     plt.grid(True)
     plt.xlabel("t [s]")
-    plt.ylabel("dq [rad/s]")
-    plt.title("Joint velocities (ankle, knee, hip)")
-    plt.legend(["ankle", "knee", "hip"])
+    plt.ylabel("dq_j [rad/s]")
+    plt.title("Joint velocities (hip, knee, ankle)")
+    plt.legend(["hip", "knee", "ankle"])
 
     plt.show()
 
